@@ -1,4 +1,6 @@
-import { query, body, cookie, header, param, checkSchema } from 'express-validator';
+import { query, body, validationResult, matchedData, cookie, header, param, checkSchema } from 'express-validator';
+
+// =====Schema users=======
 
 const validateQuery = {
     person: {
@@ -104,8 +106,8 @@ const validateLogInUser = {
 }
 
 
-const validateUpdateUser = ()=>{
-    
+const validateUpdateUser = () => {
+
     const map = [
         body('name').isString().withMessage('Name format is wrong').optional({ nullable: true }),
         body('mail').isEmail().withMessage('Email format is  wrong').optional({ nullable: true }),
@@ -114,11 +116,11 @@ const validateUpdateUser = ()=>{
         body('country').isString().withMessage('Country format is wrong').optional({ nullable: true })
 
     ]
-   
-  return map;
+
+    return map;
 }
 
-// ORDERS
+// =======Schema ORDERS=======
 const validOrder = {
     order_name: {
 
@@ -168,6 +170,15 @@ const validOrder = {
 }
 
 
-const validatorSrv = { validateQuery, validateCreateNewUser, validateLogInUser, validOrder, validateUpdateUser }
+// functions for valied data from req body
+const valiedReqResult = async (req) => {
+    const result = validationResult(req);
+    if (!result.isEmpty()) return result.throw();
+    const data = matchedData(req);
+    return data;
+}
+
+
+const validatorSrv = { validateQuery, validateCreateNewUser, validateLogInUser, validOrder, validateUpdateUser, valiedReqResult }
 
 export default validatorSrv;

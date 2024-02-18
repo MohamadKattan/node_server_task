@@ -1,16 +1,22 @@
 import express from 'express';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
-import allRouters from './src/routing/my_router.js';
 import morgan from 'morgan';
+import MySQLStore from 'express-mysql-session';
+import allRouters from './src/routing/my_router.js';
+import connectionDB from './src/db_config/db_config.js';
+
 
 
 const PORT = process.env.port || 3008;
 const app = express();
-app.use(cookieParser('Abo Omar'));// gaven secret name for accpet secuer cookies
+app.use(cookieParser('Abo Omar'));
 
-const sess = {
+const sessionStore = new (MySQLStore(session))(connectionDB.options);
+
+const sessionOptions = {
     secret: 'Abo Omar',
+    store: sessionStore,
     name: 'test',
     resave: false,
     saveUninitialized: false,
@@ -19,12 +25,12 @@ const sess = {
 
 if (app.get('env') === 'production') {
     app.set('trust proxy', 1)
-    sess.cookie.secure = true
+    sessionOptions.cookie.secure = true
 }
 app.use(morgan('dev'));
 app.use('/', express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(session(sess))
+app.use(session(sessionOptions));
 app.use(allRouters);
 app.use((req, res, next) => {
     const err = new Error('Not Found');

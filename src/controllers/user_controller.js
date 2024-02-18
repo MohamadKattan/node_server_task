@@ -1,34 +1,38 @@
-import { validationResult, matchedData } from 'express-validator';
+
 import connectionDB from '../db_config/db_config.js';
 import url from 'url';
+import helperMehtod from '../utilities/helper.js';
+import validatorSrv from '../utilities/validations.js';
 
-const connectToDataBASE = (req, res) => {
+const connectToDataBASE = async (req, res) => {
     // console.log(req.cookies);
     // console.log(req.signedCookies);
-    // console.log(req.session);
-    // console.log(req.sessionID);
+    console.log(req.session);
+    console.log(req.sessionID);
+    // res.cookie('notSignedCookie', 'Hello World', { maxAge: 60000 * 60, httpOnly: true });
+    // res.cookie('signedCookie', 'Hello World s', { maxAge: 60000 * 60, signed: true, httpOnly: true, secure: true });
+
     connectionDB.pool.escape();
     const sql = 'SELECT * FROM Users';
     connectionDB.pool.query(sql, function (err, result) {
         if (err) {
-            res.send({ "ok": false, 'error': err });
-            res.end();
+            res.status(400).send({ "ok": false, 'error': err }).end();
+
         } else {
-            res.send({ "ok": true, "result": result });
-            res.end();
+            return res.status(200).send({ "ok": true, "result": result }).end();
         }
     });
 }
 
 
-const validatUserQuery = (req, res) => {
-    const result = validationResult(req);
-    if (result.isEmpty()) {
-        const data = matchedData(req);
-        return res.status(200).send(`Hello, ${data.person}!`);
+const validatUserQuery = async (req, res) => {
+    try {
+        const data = await validatorSrv.valiedReqResult(req);
+        res.status(200).send(`Hello, ${data.person}!`).end();
+
+    } catch (error) {
+        res.send({ errors: error }).end();
     }
-    res.send({ errors: result.array()[0].msg });
-    res.end();
 }
 
 const readQueryFromString = (req, res) => {
@@ -39,73 +43,94 @@ const readQueryFromString = (req, res) => {
 }
 
 
-const signUpNewUser = (req, res) => {
-    const result = validationResult(req);
-    if (result.isEmpty()) {
-        const data = matchedData(req);
+const signUpNewUser = async (req, res) => {
+    try {
+        const data = await validatorSrv.valiedReqResult(req);
+        data.pass_word = await helperMehtod.hashUserPassWord(data.pass_word);
         connectionDB.pool.escape();
         const sql = `INSERT INTO Users (name, mail, pass_word, age, country) VALUES ('${data.name}', '${data.mail}', '${data.pass_word}', ${data.age}, '${data.country}'); SELECT * FROM Users WHERE mail = '${data.mail}' AND pass_word = '${data.pass_word}' ;`;
         connectionDB.pool.query(sql, function (err, result) {
             if (err) {
-                res.status(401).send({ "ok": false, 'error': err }).end();
+                res.status(400).send({ "ok": false, 'error': err.code ?? 'SOME THING WENT WRONG!!' }).end();
             } else {
-                req.session.user = result[1][0];
-                res.cookie('notSignedCookie', 'Hello World', { maxAge: 60000 * 60, httpOnly: true });
-                res.cookie('signedCookie', 'Hello World s', { maxAge: 60000 * 60, signed: true, httpOnly: true, secure: true });
-                res.status(200).send({ "ok": true, msg: "updated successfully", "result": result[1][0] }).end();
+                const newUser = {
+                    "id": result[1][0].id,
+                    "name": result[1][0].name,
+                    "mail": result[1][0].mail
+                }
+                req.session.user = newUser;
+                res.status(200).send({ "ok": true, msg: "Created new account successfully", "result": newUser }).end();
             }
         });
-
-    } else {
-        res.status(404).send({ errors: result.array()[0].msg });
+    } catch (error) {
+        res.status(400).send({ errors: error }).end();
     }
-
 }
 
 
-const logInUser = (req, res) => {
-    const result = validationResult(req);
-    if (result.isEmpty()) {
-        const data = matchedData(req);
+const logInUser = async (req, res) => {
+    try {
+        const data = await validatorSrv.valiedReqResult(req);
         connectionDB.pool.escape();
-        const sql = `SELECT * FROM Users WHERE mail = '${data.mail}' AND pass_word = '${data.pass_word}';`;
-        connectionDB.pool.query(sql, function (err, result) {
+        const sql = `SELECT * FROM Users WHERE mail = '${data.mail}';`;
+        connectionDB.pool.query(sql, async function (err, result) {
             if (err) {
-                res.status(401).send({ "ok": false, 'error': err }).end();
+                res.status(400).send({ "ok": false, 'error': err.code ?? 'some thing went wrong try again' }).end();
             } else {
-                req.session.user = result[0];
-                res.cookie('notSignedCookie', 'Hello World', { maxAge: 60000 * 60, httpOnly: true });
-                res.cookie('signedCookie', 'Hello World s', { maxAge: 60000 * 60, signed: true, httpOnly: true, secure: true });
-                res.status(200).send({ "ok": true, msg: "logged in account successfully", "result": result[0] ?? 'email not exist' }).end();
+                if (result[0] != null) {
+                    const hashed = result[0]['pass_word'];
+                    const checkHshed = await helperMehtod.compareHashPassWord(data.pass_word, hashed);
+                    if (checkHshed) {
+                        const newUser = {
+                            "id": result[0].id,
+                            "name": result[0].name,
+                            "mail": result[0].mail
+                        }
+                        req.session.user = newUser;
+                        res.status(200).send({ "ok": true, msg: "logged in account successfully", "result": newUser }).end();
+                    } else {
+                        res.status(404).send({ "ok": false, msg: "No user found", "result": null }).end();
+                    }
+
+                } else {
+                    res.status(404).send({ "ok": false, msg: "No user found", "result": null }).end();
+                }
+
             }
         });
-    } else {
-        res.status(401).send({ errors: result.array()[0].msg }).end
+    } catch (error) {
+        res.status(400).send({ errors: error }).end();
     }
-
 }
 
 
-const updateUserInfo = (req, res) => {
+const updateUserInfo = async (req, res) => {
     if (req.session.user) {
         const user = req.session.user;
-        const result = validationResult(req);
-        if (result.isEmpty()) {
-            const data = matchedData(req);
+        try {
+            const data = await validatorSrv.valiedReqResult(req);
+            if (data.pass_word != null) {
+                data.pass_word = await helperMehtod.hashUserPassWord(data.pass_word);
+            }
             connectionDB.pool.escape();
-            const sql = `UPDATE Users SET name = '${data.name ?? user.name}', mail = '${data.mail ?? user.mail}', pass_word = '${data.pass_word ?? user.pass_word}', age = ${data.age ?? user.age}, country = '${data.country ?? user.country}' WHERE id = ${user.id}; SELECT * FROM Users WHERE id = ${user.id};`;
+            const sql = `UPDATE Users SET name = '${data.name ?? user.name}', mail = '${data.mail ?? user.mail}'  WHERE id = ${user.id}; SELECT * FROM Users WHERE id = ${user.id};`;
             connectionDB.pool.query(sql, function (err, result) {
                 if (err) {
                     res.status(401).send({ "ok": false, 'error': err }).end();
                 } else {
-                    req.session.user = result[1][0];
-                    res.cookie('notSignedCookie', 'Hello World', { maxAge: 60000 * 60, httpOnly: true });
-                    res.cookie('signedCookie', 'Hello World s', { maxAge: 60000 * 60, signed: true, httpOnly: true, secure: true });
-                    res.status(200).send({ "ok": true, msg: "updated successfully", "result": result[1][0] ?? 'Some thing went wrong try again' }).end();
+                    const newUsers = {
+                        "id": result[1][0].id,
+                        "name": result[1][0].name,
+                        "mail": result[1][0].mail
+                    }
+                    req.session.user = newUsers;
+                    res.status(200).send({ "ok": true, msg: "updated successfully", "result": newUsers ?? 'Some thing went wrong try again' }).end();
                 }
             });
-        } else {
-            res.status(401).send({ errors: result.array()[0].msg }).end
+
+        } catch (error) {
+            res.status(401).send({ errors: error }).end();
+
         }
 
     } else {
@@ -135,9 +160,7 @@ const deleteUser = (req, res) => {
             } else {
                 req.session.user = null;
                 req.session.destroy();
-                res.clearCookie('notSignedCookie');
-                res.clearCookie('signedCookie');
-                res.status(200).send({ "ok": true, msg: "Deleted account successfully"}).end();
+                res.status(200).send({ "ok": true, msg: "Deleted account successfully" }).end();
             }
         });
 
@@ -151,8 +174,7 @@ const deleteUser = (req, res) => {
 const siginOut = async (req, res) => {
     if (req.session.user) {
         req.session.user = null;
-        await res.clearCookie('notSignedCookie');
-        await res.clearCookie('signedCookie');
+        req.session.destroy();
         res.status(200).send({ ok: true, msg: "signed out successfully " }).end();
     } else {
         res.status(401).send({ ok: false, msg: "No user logIn found" }).end();
